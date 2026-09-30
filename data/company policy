@@ -1,0 +1,17 @@
+Invoice approval policy
+
+Invoices above 100000 PKR require manager approval before payment. Invoices at or below 100000 PKR can follow the standard finance verification workflow.
+
+Duplicate invoice numbers must be investigated before payment. A repeated invoice number should never be automatically approved.
+
+Expense evidence policy
+
+Every reimbursable expense should have supporting evidence such as an invoice or receipt. Missing evidence requires finance review before reimbursement.
+
+Transaction classification
+
+Finance staff should classify transactions using the company's chart of accounts. If the correct category is uncertain, the transaction should be flagged for finance review rather than guessed.
+
+Cash flow controls
+
+Cash outflows should be reconciled against the transaction register. Material differences between source documents and the transaction register require investigation before management reporting.
