@@ -1,0 +1,4 @@
+transaction_id,date,vendor,category,amount
+TXN-001,2026-09-01,Alpha Supplies,Office Supplies,45000
+TXN-002,2026-09-02,Beta Logistics,Delivery,25000
+TXN-003,2026-09-03,Alpha Supplies,Office Supplies,30000
