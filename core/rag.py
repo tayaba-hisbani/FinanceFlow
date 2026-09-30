@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -11,14 +11,8 @@ class PolicyRAG:
     """
     Lightweight local RAG system for FinanceFlow AI.
 
-    It:
-    1. Loads the company policy document.
-    2. Splits it into useful chunks.
-    3. Creates TF-IDF vectors.
-    4. Retrieves the most relevant policy sections for a query.
-
-    This keeps the hackathon MVP simple and avoids requiring
-    a separate vector database.
+    Loads company policy, creates TF-IDF embeddings,
+    and retrieves the most relevant policy sections.
     """
 
     def __init__(self, policy_path: str = "data/company_policy.txt"):
@@ -38,15 +32,21 @@ class PolicyRAG:
         """Load and index the company policy."""
 
         if not self.policy_path.exists():
-            # Try an alternative path relative to this file.
+
             project_root = Path(__file__).resolve().parent.parent
-            alternative_path = project_root / "data" / "company_policy.txt"
+
+            alternative_path = (
+                project_root
+                / "data"
+                / "company_policy.txt"
+            )
 
             if alternative_path.exists():
                 self.policy_path = alternative_path
             else:
                 raise FileNotFoundError(
-                    f"Company policy file not found: {self.policy_path}"
+                    f"Company policy file not found: "
+                    f"{self.policy_path}"
                 )
 
         text = self.policy_path.read_text(
@@ -61,17 +61,15 @@ class PolicyRAG:
                 "Company policy file is empty."
             )
 
-        self.matrix = self.vectorizer.fit_transform(self.chunks)
+        self.matrix = self.vectorizer.fit_transform(
+            self.chunks
+        )
 
     @staticmethod
     def _split_text(text: str) -> List[str]:
         """
-        Split policy into meaningful sections.
-
-        The policy file is structured with headings such as:
-        ## Invoice Approval
-        ## Duplicate Invoices
-        etc.
+        Split the policy into sections.
+        Markdown headings create new chunks.
         """
 
         sections = []
@@ -84,7 +82,6 @@ class PolicyRAG:
             if not line:
                 continue
 
-            # Treat markdown headings as section boundaries.
             if line.startswith("#") and current:
                 sections.append(" ".join(current))
                 current = []
@@ -99,27 +96,40 @@ class PolicyRAG:
     def retrieve(
         self,
         query: str,
-        top_k: int = 3
+        k: Optional[int] = None,
+        top_k: Optional[int] = None
     ) -> List[Dict]:
         """
         Retrieve the most relevant policy sections.
 
-        Returns:
-            [
-                {
-                    "text": "...",
-                    "score": 0.82
-                }
-            ]
+        Supports BOTH:
+            retrieve(query, k=2)
+        and:
+            retrieve(query, top_k=2)
+
+        This prevents parameter-name conflicts between
+        different agents.
         """
 
         if not query or not query.strip():
             return []
 
+        # Support both parameter names.
+        if k is not None:
+            number_to_return = k
+        elif top_k is not None:
+            number_to_return = top_k
+        else:
+            number_to_return = 3
+
+        number_to_return = max(1, int(number_to_return))
+
         if self.matrix is None:
             self._load_policy()
 
-        query_vector = self.vectorizer.transform([query])
+        query_vector = self.vectorizer.transform(
+            [query]
+        )
 
         similarities = cosine_similarity(
             query_vector,
@@ -130,7 +140,7 @@ class PolicyRAG:
 
         results = []
 
-        for index in ranked_indices[:top_k]:
+        for index in ranked_indices[:number_to_return]:
 
             score = float(similarities[index])
 
@@ -146,14 +156,14 @@ class PolicyRAG:
     def search(
         self,
         query: str,
-        top_k: int = 3
+        k: Optional[int] = None,
+        top_k: Optional[int] = None
     ) -> List[str]:
-        """
-        Convenience method that returns only policy text.
-        """
+        """Return only the retrieved policy text."""
 
         results = self.retrieve(
             query=query,
+            k=k,
             top_k=top_k
         )
 
@@ -165,15 +175,17 @@ class PolicyRAG:
     def get_context(
         self,
         query: str,
-        top_k: int = 3
+        k: Optional[int] = None,
+        top_k: Optional[int] = None
     ) -> str:
         """
-        Return retrieved policy sections as one context string
-        for Gemini.
+        Return retrieved policy evidence as a single
+        context string for Gemini.
         """
 
         results = self.retrieve(
             query=query,
+            k=k,
             top_k=top_k
         )
 
