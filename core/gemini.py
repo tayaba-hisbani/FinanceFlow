@@ -1,39 +1,125 @@
-import json
-import os
+from __future__ import annotations
 
-DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+import json
+from typing import Any, Dict, Optional
+
+from google import genai
+from google.genai import types
+
 
 class GeminiService:
-    def __init__(self, api_key: str | None = None, model: str | None = None):
-        try:
-            from google import genai
-        except ImportError as e:
-            raise RuntimeError("google-genai is missing. Install requirements.txt before running FinanceFlow AI.") from e
-        key = api_key or os.getenv("GEMINI_API_KEY")
-        if not key:
-            raise ValueError("GEMINI_API_KEY is not configured.")
-        self.client = genai.Client(api_key=key)
-        self.model = model or DEFAULT_MODEL
+    """
+    Gemini service used by FinanceFlow AI.
 
-    def generate_json(self, prompt: str, schema: dict):
-        from google.genai import types
+    Gemini is responsible for:
+    - document understanding
+    - structured extraction
+    - financial explanations
+    - management report generation
+
+    Deterministic financial calculations are NOT delegated
+    to Gemini.
+    """
+
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "gemini-3.8-flash"
+    ):
+        if not api_key:
+            raise ValueError(
+                "GEMINI_API_KEY is missing."
+            )
+
+        self.client = genai.Client(
+            api_key=api_key
+        )
+
+        self.model = model
+
+    def generate_text(
+        self,
+        prompt: str,
+        system_instruction: Optional[str] = None
+    ) -> str:
+        """
+        Generate normal text from Gemini.
+        """
+
+        config_kwargs = {}
+
+        if system_instruction:
+            config_kwargs["system_instruction"] = system_instruction
+
         response = self.client.models.generate_content(
             model=self.model,
             contents=prompt,
             config=types.GenerateContentConfig(
-                temperature=0.2,
-                response_mime_type="application/json",
-                response_schema=schema,
-            ),
+                **config_kwargs
+            )
         )
-        text = response.text or "{}"
-        return json.loads(text)
 
-    def generate_text(self, prompt: str):
-        from google.genai import types
+        if not response or not response.text:
+            raise RuntimeError(
+                "Gemini returned an empty response."
+            )
+
+        return response.text.strip()
+
+    def generate_json(
+        self,
+        prompt: str,
+        schema: Dict[str, Any],
+        system_instruction: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Generate structured JSON from Gemini.
+
+        The JSON schema is supplied to Gemini so that
+        downstream agents receive predictable data.
+        """
+
+        config_kwargs = {
+            "response_mime_type": "application/json",
+            "response_schema": schema,
+        }
+
+        if system_instruction:
+            config_kwargs["system_instruction"] = (
+                system_instruction
+            )
+
         response = self.client.models.generate_content(
             model=self.model,
             contents=prompt,
-            config=types.GenerateContentConfig(temperature=0.3),
+            config=types.GenerateContentConfig(
+                **config_kwargs
+            )
         )
-        return response.text or ""
+
+        if not response or not response.text:
+            raise RuntimeError(
+                "Gemini returned an empty JSON response."
+            )
+
+        raw = response.text.strip()
+
+        # Remove accidental markdown code fences.
+        if raw.startswith("```"):
+            raw = raw.replace("```json", "")
+            raw = raw.replace("```", "")
+            raw = raw.strip()
+
+        try:
+            result = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(
+                f"Gemini returned invalid JSON: {raw[:500]}"
+            ) from exc
+
+        if not isinstance(result, dict):
+            raise RuntimeError(
+                "Gemini JSON response was not an object."
+            )
+
+        return result
